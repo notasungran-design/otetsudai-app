@@ -426,5 +426,124 @@ else { drawSetup(); pickSetupWho('ママ'); show('vSetup'); }
 // オフラインでも開けるようにする
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
+<!-- ===== アニメーション（ここから） ===== -->
+<style>
+  /* ポイントが増えたカードがぴょんとはねる */
+  @keyframes pop { 0% { transform: scale(1); } 30% { transform: scale(1.08) rotate(-1.5deg); } 60% { transform: scale(.97); } 100% { transform: scale(1); } }
+  .card.pop { animation: pop .6s ease-out; }
+  .card.pop .pt { color: var(--c); text-shadow: 0 0 12px rgba(255,210,63,.8); }
+
+  /* ランキングの棒がのびる・1位のメダルがゆれる */
+  @keyframes grow { from { width: 0; } }
+  #rank.anim .bar i { animation: grow .9s cubic-bezier(.2,.8,.2,1); }
+  @keyframes sway { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+  #rank .rank:first-of-type .medal, #rank .team + .rank .medal { display: inline-block; animation: sway 1.6s ease-in-out infinite; }
+
+  /* 通知がぽんっと出る */
+  @keyframes toastIn { 0% { transform: translate(-50%, -30px) scale(.8); opacity: 0; } 60% { transform: translate(-50%, 4px) scale(1.05); opacity: 1; } 100% { transform: translate(-50%, 0) scale(1); } }
+  #toast.show { animation: toastIn .45s ease-out; }
+
+  /* ボタンを押したときにぷにっとへこむ */
+  button { transition: transform .08s; }
+  button:active { transform: scale(.94); }
+
+  #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+
+  /* 動きを減らす設定のスマホでは、アニメーションを止める */
+  @media (prefers-reduced-motion: reduce) {
+    .card.pop, #rank.anim .bar i, #rank .medal, #toast.show { animation: none !important; }
+  }
+</style>
+<canvas id="confetti"></canvas>
+<script>
+(function () {
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ===== 紙ふぶき =====
+  const cv = document.getElementById('confetti'), ctx = cv.getContext('2d');
+  let parts = [], running = false;
+  function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
+  addEventListener('resize', resize); resize();
+  function confetti(x, y, color) {
+    if (reduce) return;
+    const colors = [color, '#FFD23F', '#FF8A80', '#7FB8FF', '#7ED9A6', '#fff'];
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * Math.PI * 2, s = 4 + Math.random() * 7;
+      parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 6, r: 4 + Math.random() * 5,
+        c: colors[i % colors.length], rot: Math.random() * 6, vr: (Math.random() - .5) * .4, life: 1 });
+    }
+    if (!running) { running = true; requestAnimationFrame(step); }
+  }
+  function step() {
+    const d = devicePixelRatio;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    parts.forEach(p => {
+      p.vy += .25; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life -= .012;
+      ctx.save(); ctx.globalAlpha = Math.max(p.life, 0);
+      ctx.translate(p.x * d, p.y * d); ctx.rotate(p.rot);
+      ctx.fillStyle = p.c; ctx.fillRect(-p.r * d, -p.r * d / 2, p.r * 2 * d, p.r * d);
+      ctx.restore();
+    });
+    parts = parts.filter(p => p.life > 0 && p.y < innerHeight + 40);
+    if (parts.length) requestAnimationFrame(step); else { running = false; ctx.clearRect(0, 0, cv.width, cv.height); }
+  }
+
+  // ===== 数字がカウントアップ =====
+  function countUp(el, from, to) {
+    const node = [...el.childNodes].find(n => n.nodeType === 3);   // 「50」の部分
+    if (!node || reduce) return;
+    const t0 = performance.now(), dur = 700;
+    (function f(t) {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      node.textContent = Math.round(from + (to - from) * e);
+      if (k < 1) requestAnimationFrame(f);
+    })(t0);
+  }
+
+  // ===== カードの変化を見張る =====
+  let prev = null;
+  function readCards() {
+    const m = {};
+    document.querySelectorAll('#cards .card').forEach(c => {
+      const name = c.querySelector('.name')?.textContent, pt = parseInt(c.querySelector('.pt')?.textContent, 10);
+      if (name) m[name] = { pt, el: c };
+    });
+    return m;
+  }
+  const cards = document.getElementById('cards');
+  if (cards) new MutationObserver(() => {
+    const now = readCards();
+    if (prev) {
+      Object.keys(now).forEach(name => {
+        const a = prev[name], b = now[name];
+        if (a && b.pt > a.pt) {
+          b.el.classList.remove('pop'); void b.el.offsetWidth; b.el.classList.add('pop');
+          countUp(b.el.querySelector('.pt'), a.pt, b.pt);
+          const r = b.el.getBoundingClientRect();
+          confetti(r.left + r.width * .75, r.top + r.height / 2, getComputedStyle(b.el).getPropertyValue('--c').trim() || '#FFD23F');
+        }
+      });
+    }
+    if (Object.keys(now).length) prev = Object.fromEntries(Object.entries(now).map(([k, v]) => [k, { pt: v.pt }]));
+  }).observe(cards, { childList: true, subtree: true });
+
+  // ===== ランキングが変わったときだけ棒をのばす =====
+  const rank = document.getElementById('rank');
+  let lastRank = '';
+  if (rank) new MutationObserver(() => {
+    const txt = rank.textContent;
+    if (txt === lastRank) return;
+    lastRank = txt;
+    rank.classList.remove('anim'); void rank.offsetWidth; rank.classList.add('anim');
+  }).observe(rank, { childList: true });
+
+  // ===== 通知のぽんっ =====
+  const toast = document.getElementById('toast');
+  if (toast) new MutationObserver(() => {
+    if (toast.style.display === 'block') { toast.classList.remove('show'); void toast.offsetWidth; toast.classList.add('show'); }
+  }).observe(toast, { attributes: true, attributeFilter: ['style'], childList: true });
+})();
+</script>
+<!-- ===== アニメーション（ここまで） ===== -->
 </body>
 </html>
