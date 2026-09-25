@@ -72,6 +72,9 @@
   .who { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
   .who button { background: #f4f6f8; border: 3px solid transparent; }
   .who button.on { background: #FFF4C2; border-color: #FFD23F; }
+  .famcode { font-size: 1.5rem; font-weight: 800; letter-spacing: .08em; text-align: center; padding: 10px; background: #F4F8FB; border-radius: 12px; margin: 8px 0; }
+  .by { color: #9aa8b4; font-size: .75rem; margin-left: 4px; }
+  body.nocloud .famonly { display: none !important; }
   #toast { position: fixed; left: 50%; top: calc(20px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
     background: #3B2F2F; color: #fff; padding: 10px 18px; border-radius: 999px; display: none; font-weight: 800; z-index: 10; }
 </style>
@@ -83,6 +86,14 @@
 
   <!-- ===== はじめての設定 ===== -->
   <section id="vSetup" class="hide">
+    <div class="box famonly">
+      <b>👨‍👩‍👧 家族コードをもらった人はこちら</b>
+      <p class="note">パートナーなどが先にはじめている場合は、家族コードを入れると同じデータを見られます。</p>
+      <input id="joinCode" placeholder="家族コード（例：ABCD-EFGH-JKLM）" autocapitalize="characters">
+      <input id="joinMe" placeholder="あなたのよびかた（例：パパ）" style="margin-top:8px">
+      <button class="add" style="width:100%;margin-top:8px" onclick="joinFamily()">この家族に参加する</button>
+    </div>
+    <p class="note famonly" style="text-align:center">── はじめて使う人は、下から ──</p>
     <div class="box">
       <b>はじめに、こどもの名前を入れてください</b>
       <div id="setupKids"></div>
@@ -99,7 +110,7 @@
       <input id="setupPin" type="password" inputmode="numeric" placeholder="4けたくらいの数字">
     </div>
     <button class="main" onclick="finishSetup()">はじめる</button>
-    <p class="note">※データはこのスマホの中だけに保存されます。インターネット上には送られません。</p>
+    <p class="note">※名前はあだ名がおすすめです。<span class="famonly">データは家族コードを知っている人だけが見られる場所に保存され、パートナーのスマホとも共有できます。</span></p>
   </section>
 
   <!-- ===== メイン画面 ===== -->
@@ -141,7 +152,7 @@
     <div id="setMenu"></div>
     <button class="sub" onclick="addMenu()">＋ メニューを追加</button>
 
-    <h2>ポイントをつける人のよびかた</h2>
+    <h2>このスマホの人のよびかた</h2>
     <div class="who" id="setWho"></div>
     <input id="setWhoFree" class="hide" style="margin-top:8px" placeholder="よびかた（例：じいじ、ばあば）" oninput="draft.parent=this.value">
 
@@ -149,6 +160,11 @@
     <div class="row">
       <input id="newPin" type="password" inputmode="numeric" placeholder="あたらしい番号">
       <button class="add" onclick="changePin()">かえる</button>
+    </div>
+
+    <div class="famonly">
+      <h2>👨‍👩‍👧 家族できょうゆう</h2>
+      <div class="box" id="famBox"></div>
     </div>
 
     <h2>バックアップ</h2>
@@ -160,7 +176,7 @@
     </div>
 
     <button class="main" onclick="saveSettings()">ほぞんしてもどる</button>
-    <button class="danger" onclick="resetAll()">すべてのデータをけす</button>
+    <button class="danger" onclick="resetAll()" id="resetBtn">すべてのデータをけす</button>
   </section>
 </div>
 
@@ -169,6 +185,13 @@
 <script>
 // ===== 基本の設定 =====
 const KEY = 'otetsudai-v1';
+const FAMKEY = 'otetsudai-family';   // 参加している家族コード
+const MEKEY = 'otetsudai-me';        // このスマホの人のよびかた
+let famCode = lsGet(FAMKEY);
+let me = lsGet(MEKEY);
+let unwatch = null;
+function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
 const COLORS = ['#FF8A65', '#4DB6AC', '#9575CD', '#F48FB1', '#64B5F6', '#FFB74D', '#81C784'];
 const DEFAULT_MENU = [
   { item: 'おさらあらい', point: 10 }, { item: 'せんたくものたたみ', point: 10 },
@@ -194,7 +217,7 @@ function save() {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // ===== よびかた（ママ／パパなど） =====
-function parentName() { return (state && state.parent) || 'ママ'; }
+function parentName() { return me || (state && state.parent) || 'ママ'; }
 function applyParent(name) {
   document.querySelectorAll('.pl').forEach(el => el.textContent = name);
 }
@@ -208,6 +231,80 @@ function drawWho(boxId, freeId, current, onPick) {
   const free = document.getElementById(freeId);
   free.classList.toggle('hide', !isFree);
   if (isFree && current.trim() && document.activeElement !== free) free.value = current;
+}
+
+// ===== 家族できょうゆう（クラウド） =====
+const CODE_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+function genCode() {
+  const a = new Uint32Array(12); crypto.getRandomValues(a);
+  return [...a].map(n => CODE_CHARS[n % 32]).join('');
+}
+const fmtCode = c => c.replace(/(.{4})(?=.)/g, '$1-');
+const cleanCode = c => String(c || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+function cloudOK() {
+  if (window.cloud === undefined) { toast('じゅんびちゅう…少しまってね'); return false; }
+  if (!window.cloud) { toast('いまは家族きょうゆうが使えません'); return false; }
+  return true;
+}
+function normalize(d) {
+  return { parent: d.parent || 'ママ', kids: d.kids || [], menu: d.menu || [], pin: d.pin || '',
+           log: (d.log || []).slice().sort((a, b) => a.t - b.t) };
+}
+function startWatch() {
+  if (!famCode || !window.cloud) return;
+  if (unwatch) unwatch();
+  unwatch = window.cloud.watch(famCode, d => {
+    state = normalize(d); save();
+    if (!document.getElementById('vMain').classList.contains('hide')) render();
+  });
+}
+function push(fields) {   // 変更をクラウドへ
+  if (famCode && window.cloud) window.cloud.update(famCode, fields).catch(() => toast('きょうゆうに失敗しました'));
+}
+async function createFamily() {
+  if (!cloudOK()) return false;
+  const code = genCode();
+  try { await window.cloud.create(code, state); }
+  catch (e) { toast('きょうゆうをはじめられませんでした'); return false; }
+  famCode = code; lsSet(FAMKEY, code);
+  if (!me) { me = state.parent; lsSet(MEKEY, me); }
+  startWatch();
+  return true;
+}
+async function joinFamily() {
+  if (!cloudOK()) return;
+  const code = cleanCode(document.getElementById('joinCode').value);
+  const who = document.getElementById('joinMe').value.trim() || 'パパ';
+  if (code.length !== 12) return toast('家族コードは12文字だよ');
+  let d = null;
+  try { d = await window.cloud.get(code); } catch (e) {}
+  if (!d) return toast('その家族コードが見つかりません');
+  famCode = code; lsSet(FAMKEY, code); me = who; lsSet(MEKEY, who);
+  state = normalize(d); save(); startWatch(); show('vMain');
+  toast('家族に参加しました！');
+}
+async function shareCode() {
+  const text = `おてつだいポイントの家族コード：${fmtCode(famCode)}\n${location.href.split('?')[0]}`;
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { return; }
+  try { await navigator.clipboard.writeText(text); toast('コピーしました'); } catch (e) { toast('コードを長押ししてコピーしてね'); }
+}
+async function startShare() { if (await createFamily()) { toast('家族きょうゆうをはじめました'); drawFamBox(); } }
+function leaveFamily() {
+  if (!confirm('このスマホを家族からはずしますか？（家族のデータはのこります。もう一度家族コードを入れると戻れます）')) return;
+  if (unwatch) unwatch(); unwatch = null;
+  famCode = ''; lsSet(FAMKEY, ''); lsSet(MEKEY, ''); me = '';
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  location.reload();
+}
+function drawFamBox() {
+  const b = document.getElementById('famBox'); if (!b) return;
+  b.innerHTML = famCode
+    ? `<p class="note">この家族コードを、パートナーのスマホで入れると、同じデータを見られます。家族以外には教えないでね。</p>
+       <div class="famcode">${fmtCode(famCode)}</div>
+       <button class="add" style="width:100%" onclick="shareCode()">コードをおくる</button>
+       <button class="sub" onclick="leaveFamily()">このスマホを家族からはずす</button>`
+    : `<p class="note">パートナーのスマホと、同じポイントをきょうゆうできます。</p>
+       <button class="add" style="width:100%" onclick="startShare()">家族きょうゆうをはじめる</button>`;
 }
 
 // ===== 画面の切り替え =====
@@ -236,7 +333,7 @@ function drawSetup() {
      ${setupNames.length > 1 ? `<button class="del" onclick="setupNames.splice(${i},1);drawSetup()">✕</button>` : ''}</div>`).join('');
 }
 function setupAddKid() { if (setupNames.length < 7) { setupNames.push(''); drawSetup(); } }
-function finishSetup() {
+async function finishSetup() {
   const names = setupNames.map(s => s.trim()).filter(Boolean);
   const pin = document.getElementById('setupPin').value.trim();
   if (!names.length) return toast('名前を1人以上いれてね');
@@ -248,7 +345,10 @@ function finishSetup() {
     kids: names.map((name, i) => ({ id: uid(), name, color: COLORS[i % COLORS.length] })),
     menu: DEFAULT_MENU.slice(), log: [], pin,
   };
-  save(); show('vMain');
+  me = parent; lsSet(MEKEY, me);
+  save();
+  if (window.cloud) await createFamily();
+  show('vMain');
 }
 
 // ===== 計算 =====
@@ -293,7 +393,7 @@ function render() {
   document.getElementById('log').innerHTML = recent.length ? recent.map(l => {
     const k = kidOf[l.kid];
     return `<div><span class="d">${fmt(l.t)}</span>
-      <span class="i"><b style="color:${k ? k.color : '#999'}">${esc(k ? k.name : '（けした子）')}</b> ${esc(l.item)}</span>
+      <span class="i"><b style="color:${k ? k.color : '#999'}">${esc(k ? k.name : '（けした子）')}</b> ${esc(l.item)}${l.by ? `<span class="by">${esc(l.by)}</span>` : ''}</span>
       <span class="${l.point >= 0 ? 'plus' : 'minus'}">${l.point >= 0 ? '+' : ''}${l.point}</span></div>`;
   }).join('') : '<div>まだきろくがないよ</div>';
 
@@ -321,8 +421,10 @@ function closeMama() {
 }
 function addLog(item, point) {
   if (!mamaOn || !selected) return;
-  state.log.push({ t: Date.now(), kid: selected, item, point });
+  const entry = { id: uid(), t: Date.now(), kid: selected, item, point, by: parentName() };
+  state.log.push(entry);
   save(); render();
+  if (famCode && window.cloud) window.cloud.addLog(famCode, entry).catch(() => toast('きょうゆうに失敗しました'));
   const k = state.kids.find(k => k.id === selected);
   toast(`${k.name} ${point > 0 ? '+' : ''}${point}pt！`);
 }
@@ -339,6 +441,7 @@ function undo() {
   if (!last) return toast('とりけすきろくがないよ');
   if (!confirm(`「${last.item} ${last.point}pt」をとりけしますか？`)) return;
   state.log.pop(); save(); render(); toast('とりけしました');
+  if (famCode && window.cloud) window.cloud.removeLog(famCode, last).catch(() => toast('きょうゆうに失敗しました'));
 }
 
 // ===== せってい =====
@@ -354,6 +457,7 @@ function pickSetWho(w) {
 }
 function drawSettings() {
   drawWho('setWho', 'setWhoFree', draft.parent, pickSetWho);
+  drawFamBox();
   document.getElementById('setKids').innerHTML = draft.kids.map((k, i) =>
     `<div class="row"><button class="dot" style="background:${k.color}" onclick="nextColor(${i})" title="いろをかえる"></button>
      <input value="${esc(k.name)}" oninput="draft.kids[${i}].name=this.value">
@@ -379,15 +483,17 @@ function saveSettings() {
   if (!kids.length) return toast('名前を1人以上いれてね');
   const parent = (draft.parent || '').trim();
   if (!parent) return toast('よびかたをいれてね');
-  state.parent = parent;
+  me = parent; lsSet(MEKEY, me);
+  if (!famCode) state.parent = parent;
   state.kids = kids;
   state.menu = draft.menu.map(m => ({ item: m.item.trim(), point: m.point })).filter(m => m.item && m.point > 0);
-  save(); toast('ほぞんしました'); show('vMain');
+  save(); push({ kids: state.kids, menu: state.menu });
+  toast('ほぞんしました'); show('vMain');
 }
 function changePin() {
   const p = document.getElementById('newPin').value.trim();
   if (p.length < 3) return toast('番号は3けた以上にしてね');
-  state.pin = p; save(); document.getElementById('newPin').value = ''; toast('番号をかえました');
+  state.pin = p; save(); push({ pin: p }); document.getElementById('newPin').value = ''; toast('番号をかえました');
 }
 async function exportData() {
   const text = JSON.stringify(state);
@@ -399,11 +505,13 @@ function importData() {
     const d = JSON.parse(document.getElementById('importText').value);
     if (!Array.isArray(d.kids) || !Array.isArray(d.log) || !Array.isArray(d.menu)) throw 0;
     if (!confirm('いまのデータを、貼りつけたデータに入れかえますか？')) return;
-    state = d; save(); document.getElementById('importText').value = '';
+    state = normalize(d); save(); push({ kids: state.kids, menu: state.menu, log: state.log, pin: state.pin });
+    document.getElementById('importText').value = '';
     toast('よみこみました'); closeMama(); show('vMain');
   } catch (e) { toast('データの形がちがうみたい'); }
 }
 function resetAll() {
+  if (famCode) return leaveFamily();
   if (!confirm('すべてのデータ（名前・ポイント・きろく）をけします。もとにもどせません。よろしいですか？')) return;
   try { localStorage.removeItem(KEY); } catch (e) {}
   location.reload();
@@ -423,127 +531,51 @@ function esc(s) {
 if (state && state.kids && state.kids.length) { show('vMain'); }
 else { drawSetup(); pickSetupWho('ママ'); show('vSetup'); }
 
+window.addEventListener('cloud-ready', () => {
+  if (!window.cloud) document.body.classList.add('nocloud');
+  startWatch();
+  if (!document.getElementById('vSettings').classList.contains('hide')) drawFamBox();
+});
+if (window.cloud !== undefined) window.dispatchEvent(new Event('cloud-ready'));
+
 // オフラインでも開けるようにする
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
-<!-- ===== アニメーション（ここから） ===== -->
-<style>
-  /* ポイントが増えたカードがぴょんとはねる */
-  @keyframes pop { 0% { transform: scale(1); } 30% { transform: scale(1.08) rotate(-1.5deg); } 60% { transform: scale(.97); } 100% { transform: scale(1); } }
-  .card.pop { animation: pop .6s ease-out; }
-  .card.pop .pt { color: var(--c); text-shadow: 0 0 12px rgba(255,210,63,.8); }
+<!-- ===== Firebase（家族できょうゆう） ===== -->
+<script type="module">
+// ▼▼ Firebaseの「firebaseConfig」をここに貼りつけてください ▼▼
+const firebaseConfig = {
+  apiKey: "AIzaSyC3NWomMJ1f8UeS1hDtOG9XPGLmrDQCTvU",
+  authDomain: "otetsudai-app-93d67.firebaseapp.com",
+  projectId: "otetsudai-app-93d67",
+  storageBucket: "otetsudai-app-93d67.firebasestorage.app",
+  messagingSenderId: "407216081912",
+  appId: "1:407216081912:web:0ec94ea7edaf6d9702240d"
+};
+// ▲▲ ここまで ▲▲
 
-  /* ランキングの棒がのびる・1位のメダルがゆれる */
-  @keyframes grow { from { width: 0; } }
-  #rank.anim .bar i { animation: grow .9s cubic-bezier(.2,.8,.2,1); }
-  @keyframes sway { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
-  #rank .rank:first-of-type .medal, #rank .team + .rank .medal { display: inline-block; animation: sway 1.6s ease-in-out infinite; }
-
-  /* 通知がぽんっと出る */
-  @keyframes toastIn { 0% { transform: translate(-50%, -30px) scale(.8); opacity: 0; } 60% { transform: translate(-50%, 4px) scale(1.05); opacity: 1; } 100% { transform: translate(-50%, 0) scale(1); } }
-  #toast.show { animation: toastIn .45s ease-out; }
-
-  /* ボタンを押したときにぷにっとへこむ */
-  button { transition: transform .08s; }
-  button:active { transform: scale(.94); }
-
-  #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
-
-  /* 動きを減らす設定のスマホでは、アニメーションを止める */
-  @media (prefers-reduced-motion: reduce) {
-    .card.pop, #rank.anim .bar i, #rank .medal, #toast.show { animation: none !important; }
-  }
-</style>
-<canvas id="confetti"></canvas>
-<script>
-(function () {
-  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // ===== 紙ふぶき =====
-  const cv = document.getElementById('confetti'), ctx = cv.getContext('2d');
-  let parts = [], running = false;
-  function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
-  addEventListener('resize', resize); resize();
-  function confetti(x, y, color) {
-    if (reduce) return;
-    const colors = [color, '#FFD23F', '#FF8A80', '#7FB8FF', '#7ED9A6', '#fff'];
-    for (let i = 0; i < 80; i++) {
-      const a = Math.random() * Math.PI * 2, s = 4 + Math.random() * 7;
-      parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 6, r: 4 + Math.random() * 5,
-        c: colors[i % colors.length], rot: Math.random() * 6, vr: (Math.random() - .5) * .4, life: 1 });
-    }
-    if (!running) { running = true; requestAnimationFrame(step); }
-  }
-  function step() {
-    const d = devicePixelRatio;
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    parts.forEach(p => {
-      p.vy += .25; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life -= .012;
-      ctx.save(); ctx.globalAlpha = Math.max(p.life, 0);
-      ctx.translate(p.x * d, p.y * d); ctx.rotate(p.rot);
-      ctx.fillStyle = p.c; ctx.fillRect(-p.r * d, -p.r * d / 2, p.r * 2 * d, p.r * d);
-      ctx.restore();
-    });
-    parts = parts.filter(p => p.life > 0 && p.y < innerHeight + 40);
-    if (parts.length) requestAnimationFrame(step); else { running = false; ctx.clearRect(0, 0, cv.width, cv.height); }
-  }
-
-  // ===== 数字がカウントアップ =====
-  function countUp(el, from, to) {
-    const node = [...el.childNodes].find(n => n.nodeType === 3);   // 「50」の部分
-    if (!node || reduce) return;
-    const t0 = performance.now(), dur = 700;
-    (function f(t) {
-      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      node.textContent = Math.round(from + (to - from) * e);
-      if (k < 1) requestAnimationFrame(f);
-    })(t0);
-  }
-
-  // ===== カードの変化を見張る =====
-  let prev = null;
-  function readCards() {
-    const m = {};
-    document.querySelectorAll('#cards .card').forEach(c => {
-      const name = c.querySelector('.name')?.textContent, pt = parseInt(c.querySelector('.pt')?.textContent, 10);
-      if (name) m[name] = { pt, el: c };
-    });
-    return m;
-  }
-  const cards = document.getElementById('cards');
-  if (cards) new MutationObserver(() => {
-    const now = readCards();
-    if (prev) {
-      Object.keys(now).forEach(name => {
-        const a = prev[name], b = now[name];
-        if (a && b.pt > a.pt) {
-          b.el.classList.remove('pop'); void b.el.offsetWidth; b.el.classList.add('pop');
-          countUp(b.el.querySelector('.pt'), a.pt, b.pt);
-          const r = b.el.getBoundingClientRect();
-          confetti(r.left + r.width * .75, r.top + r.height / 2, getComputedStyle(b.el).getPropertyValue('--c').trim() || '#FFD23F');
-        }
-      });
-    }
-    if (Object.keys(now).length) prev = Object.fromEntries(Object.entries(now).map(([k, v]) => [k, { pt: v.pt }]));
-  }).observe(cards, { childList: true, subtree: true });
-
-  // ===== ランキングが変わったときだけ棒をのばす =====
-  const rank = document.getElementById('rank');
-  let lastRank = '';
-  if (rank) new MutationObserver(() => {
-    const txt = rank.textContent;
-    if (txt === lastRank) return;
-    lastRank = txt;
-    rank.classList.remove('anim'); void rank.offsetWidth; rank.classList.add('anim');
-  }).observe(rank, { childList: true });
-
-  // ===== 通知のぽんっ =====
-  const toast = document.getElementById('toast');
-  if (toast) new MutationObserver(() => {
-    if (toast.style.display === 'block') { toast.classList.remove('show'); void toast.offsetWidth; toast.classList.add('show'); }
-  }).observe(toast, { attributes: true, attributeFilter: ['style'], childList: true });
-})();
+const V = '10.12.2', G = `https://www.gstatic.com/firebasejs/${V}/`;
+try {
+  if (!firebaseConfig.apiKey) throw new Error('no config');
+  const [{ initializeApp }, { getAuth, signInAnonymously }, fs] = await Promise.all([
+    import(G + 'firebase-app.js'), import(G + 'firebase-auth.js'), import(G + 'firebase-firestore.js')]);
+  const app = initializeApp(firebaseConfig);
+  await signInAnonymously(getAuth(app));
+  const db = fs.getFirestore(app);
+  const ref = code => fs.doc(db, 'families', code);
+  window.cloud = {
+    create: (code, d) => fs.setDoc(ref(code), { parent: d.parent, kids: d.kids, menu: d.menu, pin: d.pin, log: d.log || [], created: Date.now() }),
+    get: async code => { const s = await fs.getDoc(ref(code)); return s.exists() ? s.data() : null; },
+    watch: (code, cb) => fs.onSnapshot(ref(code), s => { if (s.exists()) cb(s.data()); }, e => console.warn(e)),
+    addLog: (code, e) => fs.updateDoc(ref(code), { log: fs.arrayUnion(e) }),
+    removeLog: (code, e) => fs.updateDoc(ref(code), { log: fs.arrayRemove(e) }),
+    update: (code, f) => fs.updateDoc(ref(code), f),
+  };
+} catch (e) {
+  console.warn('cloud off:', e.message);
+  window.cloud = null;
+}
+window.dispatchEvent(new Event('cloud-ready'));
 </script>
-<!-- ===== アニメーション（ここまで） ===== -->
 </body>
 </html>
