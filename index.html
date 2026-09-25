@@ -69,6 +69,9 @@
   .dot { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; border: none; padding: 0; }
   textarea { width: 100%; height: 90px; font-size: .75rem; border-radius: 12px; border: 2px solid #cfe0ec; padding: 10px; }
 
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .who button { background: #f4f6f8; border: 3px solid transparent; }
+  .who button.on { background: #FFF4C2; border-color: #FFD23F; }
   #toast { position: fixed; left: 50%; top: calc(20px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
     background: #3B2F2F; color: #fff; padding: 10px 18px; border-radius: 999px; display: none; font-weight: 800; z-index: 10; }
 </style>
@@ -86,7 +89,12 @@
       <button class="sub" onclick="setupAddKid()">＋ こどもを追加</button>
     </div>
     <div class="box">
-      <b>ママ（おうちの人）用のあんしょうばんごう</b>
+      <b>ポイントをつける人のよびかた</b>
+      <div class="who" id="setupWho"></div>
+      <input id="setupWhoFree" class="hide" style="margin-top:8px" placeholder="よびかた（例：じいじ、ばあば）" oninput="setupWho=this.value">
+    </div>
+    <div class="box">
+      <b><span class="pl">おうちの人</span>用のあんしょうばんごう</b>
       <p class="note">ポイントをつける・使うときに入力します。こどもに知られない番号にしてください。</p>
       <input id="setupPin" type="password" inputmode="numeric" placeholder="4けたくらいの数字">
     </div>
@@ -112,8 +120,8 @@
         <button class="add" onclick="custom(1)">ふやす</button>
       </div>
       <button class="sub" onclick="undo()">↩ さいごのきろくをとりけす</button>
-      <button class="sub" onclick="show('vSettings')">⚙ せってい（名前・メニュー・番号）</button>
-      <button class="main" onclick="closeMama()">ママモードをおわる</button>
+      <button class="sub" onclick="show('vSettings')">⚙ せってい（名前・メニュー・よびかた・番号）</button>
+      <button class="main" onclick="closeMama()"><span class="pl">ママ</span>モードをおわる</button>
     </div>
 
     <h2>🏆 こんしゅうのがんばりランキング</h2>
@@ -132,6 +140,10 @@
     <h2>おてつだいメニュー</h2>
     <div id="setMenu"></div>
     <button class="sub" onclick="addMenu()">＋ メニューを追加</button>
+
+    <h2>ポイントをつける人のよびかた</h2>
+    <div class="who" id="setWho"></div>
+    <input id="setWhoFree" class="hide" style="margin-top:8px" placeholder="よびかた（例：じいじ、ばあば）" oninput="draft.parent=this.value">
 
     <h2>あんしょうばんごう</h2>
     <div class="row">
@@ -152,7 +164,7 @@
   </section>
 </div>
 
-<button class="fab hide" id="fab" onclick="openMama()">ママ</button>
+<button class="fab hide" id="fab" onclick="openMama()"><span class="pl">ママ</span></button>
 
 <script>
 // ===== 基本の設定 =====
@@ -163,6 +175,8 @@ const DEFAULT_MENU = [
   { item: 'おふろそうじ', point: 15 }, { item: 'ゴミだし', point: 5 },
   { item: 'おもちゃかたづけ', point: 5 }, { item: 'くつならべ', point: 3 },
 ];
+
+const WHO = ['ママ', 'パパ', 'ママ・パパ', 'おうちの人'];   // よびかたの候補
 
 let state = load();     // すべてのデータ
 let mamaOn = false;     // ママモード中か
@@ -179,6 +193,23 @@ function save() {
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+// ===== よびかた（ママ／パパなど） =====
+function parentName() { return (state && state.parent) || 'ママ'; }
+function applyParent(name) {
+  document.querySelectorAll('.pl').forEach(el => el.textContent = name);
+}
+// よびかたボタンを描く（候補＋「じぶんで入力」）
+function drawWho(boxId, freeId, current, onPick) {
+  const isFree = current !== null && !WHO.includes(current);
+  document.getElementById(boxId).innerHTML =
+    WHO.map(w => `<button class="${w === current ? 'on' : ''}" data-w="${w}">${w}</button>`).join('') +
+    `<button class="${isFree ? 'on' : ''}" data-w="">じぶんで入力</button>`;
+  document.querySelectorAll('#' + boxId + ' button').forEach(b => b.onclick = () => onPick(b.dataset.w));
+  const free = document.getElementById(freeId);
+  free.classList.toggle('hide', !isFree);
+  if (isFree && current.trim() && document.activeElement !== free) free.value = current;
+}
+
 // ===== 画面の切り替え =====
 function show(id) {
   ['vSetup', 'vMain', 'vSettings'].forEach(v => document.getElementById(v).classList.toggle('hide', v !== id));
@@ -190,6 +221,14 @@ function show(id) {
 
 // ===== はじめての設定 =====
 let setupNames = ['', '', ''];
+let setupWho = 'ママ';
+function pickSetupWho(w) {
+  setupWho = w;
+  if (w === '') { document.getElementById('setupWhoFree').value = ''; }
+  drawWho('setupWho', 'setupWhoFree', w === '' ? '　' : w, pickSetupWho);
+  if (w === '') { setupWho = ''; document.getElementById('setupWhoFree').focus(); }
+  applyParent(w || 'おうちの人');
+}
 function drawSetup() {
   document.getElementById('setupKids').innerHTML = setupNames.map((n, i) =>
     `<div class="row"><span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
@@ -202,7 +241,10 @@ function finishSetup() {
   const pin = document.getElementById('setupPin').value.trim();
   if (!names.length) return toast('名前を1人以上いれてね');
   if (pin.length < 3) return toast('番号は3けた以上にしてね');
+  const parent = (setupWho || '').trim();
+  if (!parent) return toast('よびかたをいれてね');
   state = {
+    parent,
     kids: names.map((name, i) => ({ id: uid(), name, color: COLORS[i % COLORS.length] })),
     menu: DEFAULT_MENU.slice(), log: [], pin,
   };
@@ -220,6 +262,7 @@ function fmt(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate
 
 // ===== メイン画面を描く =====
 function render() {
+  applyParent(parentName());
   const kidOf = {}; state.kids.forEach(k => kidOf[k.id] = k);
 
   document.getElementById('cards').innerHTML = state.kids.map(k =>
@@ -300,10 +343,17 @@ function undo() {
 
 // ===== せってい =====
 function openSettings() {
-  draft = JSON.parse(JSON.stringify({ kids: state.kids, menu: state.menu }));
+  draft = JSON.parse(JSON.stringify({ kids: state.kids, menu: state.menu, parent: parentName() }));
   drawSettings();
 }
+function pickSetWho(w) {
+  draft.parent = w;
+  if (w === '') document.getElementById('setWhoFree').value = '';
+  drawWho('setWho', 'setWhoFree', w === '' ? '　' : w, pickSetWho);
+  if (w === '') document.getElementById('setWhoFree').focus();
+}
 function drawSettings() {
+  drawWho('setWho', 'setWhoFree', draft.parent, pickSetWho);
   document.getElementById('setKids').innerHTML = draft.kids.map((k, i) =>
     `<div class="row"><button class="dot" style="background:${k.color}" onclick="nextColor(${i})" title="いろをかえる"></button>
      <input value="${esc(k.name)}" oninput="draft.kids[${i}].name=this.value">
@@ -327,6 +377,9 @@ function addMenu() { draft.menu.push({ item: '', point: 5 }); drawSettings(); }
 function saveSettings() {
   const kids = draft.kids.map(k => ({ ...k, name: k.name.trim() })).filter(k => k.name);
   if (!kids.length) return toast('名前を1人以上いれてね');
+  const parent = (draft.parent || '').trim();
+  if (!parent) return toast('よびかたをいれてね');
+  state.parent = parent;
   state.kids = kids;
   state.menu = draft.menu.map(m => ({ item: m.item.trim(), point: m.point })).filter(m => m.item && m.point > 0);
   save(); toast('ほぞんしました'); show('vMain');
@@ -368,7 +421,7 @@ function esc(s) {
 
 // ===== 起動 =====
 if (state && state.kids && state.kids.length) { show('vMain'); }
-else { drawSetup(); show('vSetup'); }
+else { drawSetup(); pickSetupWho('ママ'); show('vSetup'); }
 
 // オフラインでも開けるようにする
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
