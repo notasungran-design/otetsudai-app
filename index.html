@@ -75,6 +75,18 @@
   .famcode { font-size: 1.5rem; font-weight: 800; letter-spacing: .08em; text-align: center; padding: 10px; background: #F4F8FB; border-radius: 12px; margin: 8px 0; }
   .by { color: #9aa8b4; font-size: .75rem; margin-left: 4px; }
   body.nocloud .famonly { display: none !important; }
+  .moment { background: #fff; border-radius: 18px; padding: 12px; margin-bottom: 12px; box-shadow: 0 2px 0 rgba(0,0,0,.05); }
+  .moment .mh { display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-bottom: 8px; }
+  .moment .mh .tm { color: #9aa8b4; font-size: .75rem; margin-left: auto; }
+  .moment img { width: 100%; border-radius: 14px; display: block; }
+  .moment .mt { margin-top: 8px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .moment .ma { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .heart { background: #FFE8EC; padding: 8px 14px; border-radius: 999px; font-size: .9rem; }
+  .heart.on { background: #FF6F8E; color: #fff; }
+  .mdel { background: #f4f6f8; color: #9aa8b4; padding: 8px 12px; border-radius: 999px; font-size: .8rem; margin-left: auto; }
+  .mprev { width: 100%; border-radius: 14px; margin-top: 8px; }
+  .photo-btn { display: inline-block; background: #DCE8F2; padding: 12px 16px; border-radius: 12px; font-weight: 800; cursor: pointer; }
+  #toast { white-space: nowrap; }
   #toast { position: fixed; left: 50%; top: calc(20px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
     background: #3B2F2F; color: #fff; padding: 10px 18px; border-radius: 999px; display: none; font-weight: 800; z-index: 10; }
 </style>
@@ -130,6 +142,16 @@
         <button class="use" onclick="custom(-1)">つかう</button>
         <button class="add" onclick="custom(1)">ふやす</button>
       </div>
+      <div class="famonly" id="momentForm">
+        <h2>④ おてつだいのひとこま（写真）</h2>
+        <p class="note">①でえらんだ子の写真を、家族みんなに見せられます。</p>
+        <textarea id="mText" rows="2" placeholder="ひとこと（例：はじめてのおさらあらい！）" style="width:100%;font-family:inherit;font-size:1rem;padding:12px;border-radius:12px;border:2px solid #cfe0ec"></textarea>
+        <img id="mPrev" class="mprev hide" alt="">
+        <div class="row">
+          <label class="photo-btn">📷 写真をえらぶ<input id="mFile" type="file" accept="image/*" class="hide" onchange="pickMoment(this)"></label>
+          <button class="add" style="margin-left:auto" onclick="postMoment()">投稿する</button>
+        </div>
+      </div>
       <button class="sub" onclick="undo()">↩ さいごのきろくをとりけす</button>
       <button class="sub" onclick="show('vSettings')">⚙ せってい（名前・メニュー・よびかた・番号）</button>
       <button class="main" onclick="closeMama()"><span class="pl">ママ</span>モードをおわる</button>
@@ -140,6 +162,11 @@
 
     <h2>さいきんのきろく</h2>
     <div class="log" id="log"></div>
+
+    <div class="famonly">
+      <h2>📸 おてつだいのひとこま</h2>
+      <div id="moments"></div>
+    </div>
   </section>
 
   <!-- ===== せってい ===== -->
@@ -190,6 +217,9 @@ const MEKEY = 'otetsudai-me';        // このスマホの人のよびかた
 let famCode = lsGet(FAMKEY);
 let me = lsGet(MEKEY);
 let unwatch = null;
+let unwatchM = null;
+let moments = [];
+let mPhoto = null;
 function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
 function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
 const COLORS = ['#FF8A65', '#4DB6AC', '#9575CD', '#F48FB1', '#64B5F6', '#FFB74D', '#81C784'];
@@ -253,11 +283,58 @@ function normalize(d) {
 function startWatch() {
   if (!famCode || !window.cloud) return;
   if (unwatch) unwatch();
+  if (unwatchM) unwatchM();
+  unwatchM = window.cloud.watchMoments(famCode, list => { moments = list; renderMoments(); });
   unwatch = window.cloud.watch(famCode, d => {
     state = normalize(d); save();
     if (!document.getElementById('vMain').classList.contains('hide')) render();
   });
 }
+// ===== おてつだいのひとこま（写真） =====
+function pickMoment(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  const img = new Image(), url = URL.createObjectURL(f);
+  img.onload = () => {
+    const max = 720, k = Math.min(1, max / Math.max(img.width, img.height));   // 写真を小さくして保存
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    let q = .72, data = cv.toDataURL('image/jpeg', q);
+    while (data.length > 250000 && q > .3) { q -= .1; data = cv.toDataURL('image/jpeg', q); }
+    mPhoto = data; URL.revokeObjectURL(url);
+    const p = document.getElementById('mPrev'); p.src = data; p.classList.remove('hide');
+  };
+  img.src = url;
+}
+async function postMoment() {
+  if (!mamaOn) return;
+  if (!famCode || !window.cloud) return toast('家族きょうゆうをはじめると使えます');
+  if (!mPhoto) return toast('写真をえらんでね');
+  const k = state.kids.find(x => x.id === selected);
+  const m = { t: Date.now(), kid: selected, text: document.getElementById('mText').value.trim(), img: mPhoto,
+              by: parentName(), uid: window.cloud.uid, likes: {} };
+  try { await window.cloud.addMoment(famCode, m); } catch (e) { return toast('投稿できませんでした'); }
+  mPhoto = null; document.getElementById('mText').value = ''; document.getElementById('mFile').value = '';
+  document.getElementById('mPrev').classList.add('hide');
+  toast(`${k ? k.name : ''}のひとこまを投稿しました 📸`);
+}
+function renderMoments() {
+  const box = document.getElementById('moments'); if (!box) return;
+  if (!famCode) { box.innerHTML = '<p class="note">せってい画面の「家族きょうゆう」をはじめると、写真を投稿できます。</p>'; return; }
+  const me = window.cloud && window.cloud.uid;
+  box.innerHTML = moments.map(m => {
+    const k = state.kids.find(x => x.id === m.kid), n = Object.keys(m.likes || {}).length, on = me && (m.likes || {})[me];
+    return `<div class="moment">
+      <div class="mh"><b style="color:${k ? k.color : '#999'}">${esc(k ? k.name : '')}</b>${m.by ? `<span class="by">${esc(m.by)}</span>` : ''}<span class="tm">${fmt(m.t)}</span></div>
+      <img src="${m.img}" alt="" loading="lazy">
+      ${m.text ? `<div class="mt">${esc(m.text)}</div>` : ''}
+      <div class="ma"><button class="heart ${on ? 'on' : ''}" onclick="likeMoment('${m.id}', ${!on})">♡ ${n || ''}</button>
+        ${mamaOn && m.uid === me ? `<button class="mdel" onclick="delMoment('${m.id}')">けす</button>` : ''}</div>
+    </div>`;
+  }).join('') || '<p class="note">まだ写真がありません。ママモードの④から投稿できます。</p>';
+}
+async function likeMoment(id, on) { try { await window.cloud.likeMoment(famCode, id, window.cloud.uid, on); } catch (e) {} }
+async function delMoment(id) { if (confirm('この写真をけしますか？')) { try { await window.cloud.deleteMoment(famCode, id); } catch (e) { toast('けせませんでした'); } } }
+
 function push(fields) {   // 変更をクラウドへ
   if (famCode && window.cloud) window.cloud.update(famCode, fields).catch(() => toast('きょうゆうに失敗しました'));
 }
@@ -292,6 +369,7 @@ async function startShare() { if (await createFamily()) { toast('家族きょう
 function leaveFamily() {
   if (!confirm('このスマホを家族からはずしますか？（家族のデータはのこります。もう一度家族コードを入れると戻れます）')) return;
   if (unwatch) unwatch(); unwatch = null;
+  if (unwatchM) unwatchM(); unwatchM = null;
   famCode = ''; lsSet(FAMKEY, ''); lsSet(MEKEY, ''); me = '';
   try { localStorage.removeItem(KEY); } catch (e) {}
   location.reload();
@@ -363,6 +441,7 @@ function fmt(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate
 // ===== メイン画面を描く =====
 function render() {
   applyParent(parentName());
+  renderMoments();
   const kidOf = {}; state.kids.forEach(k => kidOf[k.id] = k);
 
   document.getElementById('cards').innerHTML = state.kids.map(k =>
@@ -410,12 +489,12 @@ function openMama() {
   const p = prompt('あんしょうばんごうをいれてね');
   if (p === null) return;
   if (p.trim() !== state.pin) return toast('ばんごうがちがうよ');
-  mamaOn = true;
+  mamaOn = true; renderMoments();
   document.getElementById('mama').classList.remove('hide');
   document.getElementById('fab').classList.add('hide');
 }
 function closeMama() {
-  mamaOn = false;
+  mamaOn = false; renderMoments();
   document.getElementById('mama').classList.add('hide');
   document.getElementById('fab').classList.remove('hide');
 }
@@ -560,10 +639,17 @@ try {
   const [{ initializeApp }, { getAuth, signInAnonymously }, fs] = await Promise.all([
     import(G + 'firebase-app.js'), import(G + 'firebase-auth.js'), import(G + 'firebase-firestore.js')]);
   const app = initializeApp(firebaseConfig);
-  await signInAnonymously(getAuth(app));
+  const cred = await signInAnonymously(getAuth(app));
   const db = fs.getFirestore(app);
   const ref = code => fs.doc(db, 'families', code);
+  const mcol = code => fs.collection(db, 'families', code, 'moments');
   window.cloud = {
+    uid: cred.user.uid,
+    addMoment: (code, m) => fs.addDoc(mcol(code), m),
+    watchMoments: (code, cb) => fs.onSnapshot(fs.query(mcol(code), fs.orderBy('t', 'desc'), fs.limit(20)),
+      s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.warn(e)),
+    likeMoment: (code, id, u, on) => fs.updateDoc(fs.doc(db, 'families', code, 'moments', id), { ['likes.' + u]: on ? true : fs.deleteField() }),
+    deleteMoment: (code, id) => fs.deleteDoc(fs.doc(db, 'families', code, 'moments', id)),
     create: (code, d) => fs.setDoc(ref(code), { parent: d.parent, kids: d.kids, menu: d.menu, pin: d.pin, log: d.log || [], created: Date.now() }),
     get: async code => { const s = await fs.getDoc(ref(code)); return s.exists() ? s.data() : null; },
     watch: (code, cb) => fs.onSnapshot(ref(code), s => { if (s.exists()) cb(s.data()); }, e => console.warn(e)),
