@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>おてつだいポイント</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="おてつだい">
+<meta name="theme-color" content="#EAF6FF">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: #EAF6FF; color: #3B2F2F;
+    font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px 14px 100px; }
+  h1 { text-align: center; font-size: 1.45rem; margin: 8px 0 16px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 8px; }
+  .hide { display: none !important; }
+  .box { background: #fff; border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; }
+  .note { font-size: .8rem; color: #7b8a97; line-height: 1.6; }
+
+  .card { display: flex; justify-content: space-between; align-items: center; background: #fff;
+    border-radius: 18px; padding: 16px 20px; margin-bottom: 12px; border-left: 12px solid var(--c);
+    box-shadow: 0 3px 0 rgba(0,0,0,.06); }
+  .card .name { font-size: 1.3rem; font-weight: 800; }
+  .card .pt { font-size: 2.2rem; font-weight: 800; color: var(--c); }
+  .card .pt small { font-size: 1rem; margin-left: 2px; }
+
+  .team { text-align: center; font-weight: 800; background: #FFF4C2; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
+  .rank { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 14px; padding: 12px 16px; margin-bottom: 8px; }
+  .rank .medal { font-size: 1.8rem; width: 40px; text-align: center; }
+  .rank .rn { flex: 1; font-weight: 800; }
+  .rank .rc { color: #8a9aa8; font-size: .85rem; font-weight: 500; margin-left: 4px; }
+  .rank .rp { font-weight: 800; color: var(--c); font-size: 1.3rem; }
+  .bar { height: 8px; background: #eef3f7; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--c); border-radius: 4px; }
+
+  .log { background: #fff; border-radius: 14px; padding: 6px 14px; }
+  .log div { display: flex; gap: 8px; padding: 9px 0; border-bottom: 1px dashed #d8e6f0; font-size: .9rem; }
+  .log div:last-child { border-bottom: none; }
+  .log .d { color: #8a9aa8; width: 72px; flex-shrink: 0; }
+  .log .i { flex: 1; }
+  .plus { color: #1f9d6b; font-weight: 800; }
+  .minus { color: #d9534f; font-weight: 800; }
+
+  button { font-family: inherit; font-size: 1rem; font-weight: 800; border: none; border-radius: 14px;
+    padding: 14px; cursor: pointer; color: #3B2F2F; }
+  .fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #3B2F2F; color: #fff; border-radius: 999px; padding: 12px 20px; }
+  .kids-sel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .kids-sel button { background: #fff; border: 3px solid var(--c); }
+  .kids-sel button.on { background: var(--c); color: #fff; }
+  .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .menu button { background: #FFD23F; line-height: 1.3; }
+  .menu button span { display: block; font-size: 1.3rem; }
+  .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  input, select { font-family: inherit; font-size: 1rem; padding: 12px; border-radius: 12px;
+    border: 2px solid #cfe0ec; width: 100%; background: #fff; color: #3B2F2F; }
+  .use { background: #FF8A80; color: #fff; white-space: nowrap; }
+  .add { background: #4DB6AC; color: #fff; white-space: nowrap; }
+  .main { background: #3B2F2F; color: #fff; width: 100%; margin-top: 12px; }
+  .sub { background: #dbe8f2; width: 100%; margin-top: 10px; }
+  .danger { background: #fff; color: #d9534f; border: 2px solid #f2b8b5; width: 100%; margin-top: 10px; }
+  .del { background: #f4f6f8; color: #b0bcc6; padding: 12px 14px; }
+  .dot { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; border: none; padding: 0; }
+  textarea { width: 100%; height: 90px; font-size: .75rem; border-radius: 12px; border: 2px solid #cfe0ec; padding: 10px; }
+
+  #toast { position: fixed; left: 50%; top: calc(20px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+    background: #3B2F2F; color: #fff; padding: 10px 18px; border-radius: 999px; display: none; font-weight: 800; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<div class="wrap">
+  <h1>⭐ おてつだいポイント ⭐</h1>
+
+  <!-- ===== はじめての設定 ===== -->
+  <section id="vSetup" class="hide">
+    <div class="box">
+      <b>はじめに、こどもの名前を入れてください</b>
+      <div id="setupKids"></div>
+      <button class="sub" onclick="setupAddKid()">＋ こどもを追加</button>
+    </div>
+    <div class="box">
+      <b>ママ（おうちの人）用のあんしょうばんごう</b>
+      <p class="note">ポイントをつける・使うときに入力します。こどもに知られない番号にしてください。</p>
+      <input id="setupPin" type="password" inputmode="numeric" placeholder="4けたくらいの数字">
+    </div>
+    <button class="main" onclick="finishSetup()">はじめる</button>
+    <p class="note">※データはこのスマホの中だけに保存されます。インターネット上には送られません。</p>
+  </section>
+
+  <!-- ===== メイン画面 ===== -->
+  <section id="vMain" class="hide">
+    <div id="cards"></div>
+
+    <!-- ママモード -->
+    <div id="mama" class="hide">
+      <h2>① だれの？</h2>
+      <div class="kids-sel" id="kidsSel"></div>
+      <h2>② おてつだいをタップでポイント</h2>
+      <div class="menu" id="menuBtns"></div>
+      <h2>③ ごほうびでつかう／じゆうにふやす</h2>
+      <input id="memo" placeholder="ないよう（例：おかし、ゲーム30分）">
+      <div class="row">
+        <input id="num" type="number" inputmode="numeric" placeholder="ポイント">
+        <button class="use" onclick="custom(-1)">つかう</button>
+        <button class="add" onclick="custom(1)">ふやす</button>
+      </div>
+      <button class="sub" onclick="undo()">↩ さいごのきろくをとりけす</button>
+      <button class="sub" onclick="show('vSettings')">⚙ せってい（名前・メニュー・番号）</button>
+      <button class="main" onclick="closeMama()">ママモードをおわる</button>
+    </div>
+
+    <h2>🏆 こんしゅうのがんばりランキング</h2>
+    <div id="rank"></div>
+
+    <h2>さいきんのきろく</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+  <!-- ===== せってい ===== -->
+  <section id="vSettings" class="hide">
+    <h2>こども</h2>
+    <div id="setKids"></div>
+    <button class="sub" onclick="addKid()">＋ こどもを追加</button>
+
+    <h2>おてつだいメニュー</h2>
+    <div id="setMenu"></div>
+    <button class="sub" onclick="addMenu()">＋ メニューを追加</button>
+
+    <h2>あんしょうばんごう</h2>
+    <div class="row">
+      <input id="newPin" type="password" inputmode="numeric" placeholder="あたらしい番号">
+      <button class="add" onclick="changePin()">かえる</button>
+    </div>
+
+    <h2>バックアップ</h2>
+    <div class="box">
+      <p class="note">機種変更のときや、万一にそなえて、ときどきコピーしてLINEのメモなどに貼っておくと安心です。</p>
+      <button class="sub" onclick="exportData()">データをコピーする</button>
+      <textarea id="importText" placeholder="コピーしたデータをここに貼りつけ"></textarea>
+      <button class="sub" onclick="importData()">貼りつけたデータをよみこむ</button>
+    </div>
+
+    <button class="main" onclick="saveSettings()">ほぞんしてもどる</button>
+    <button class="danger" onclick="resetAll()">すべてのデータをけす</button>
+  </section>
+</div>
+
+<button class="fab hide" id="fab" onclick="openMama()">ママ</button>
+
+<script>
+// ===== 基本の設定 =====
+const KEY = 'otetsudai-v1';
+const COLORS = ['#FF8A65', '#4DB6AC', '#9575CD', '#F48FB1', '#64B5F6', '#FFB74D', '#81C784'];
+const DEFAULT_MENU = [
+  { item: 'おさらあらい', point: 10 }, { item: 'せんたくものたたみ', point: 10 },
+  { item: 'おふろそうじ', point: 15 }, { item: 'ゴミだし', point: 5 },
+  { item: 'おもちゃかたづけ', point: 5 }, { item: 'くつならべ', point: 3 },
+];
+
+let state = load();     // すべてのデータ
+let mamaOn = false;     // ママモード中か
+let selected = null;    // えらんでいるこどものid
+let draft = null;       // せってい画面で編集中のデータ
+
+// ===== 保存と読み込み（このスマホの中だけ） =====
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { toast('ほぞんできませんでした'); }
+}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ===== 画面の切り替え =====
+function show(id) {
+  ['vSetup', 'vMain', 'vSettings'].forEach(v => document.getElementById(v).classList.toggle('hide', v !== id));
+  document.getElementById('fab').classList.toggle('hide', id !== 'vMain' || mamaOn);
+  if (id === 'vSettings') openSettings();
+  if (id === 'vMain') render();
+  window.scrollTo(0, 0);
+}
+
+// ===== はじめての設定 =====
+let setupNames = ['', '', ''];
+function drawSetup() {
+  document.getElementById('setupKids').innerHTML = setupNames.map((n, i) =>
+    `<div class="row"><span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
+     <input value="${esc(n)}" placeholder="なまえ（あだ名でもOK）" oninput="setupNames[${i}]=this.value">
+     ${setupNames.length > 1 ? `<button class="del" onclick="setupNames.splice(${i},1);drawSetup()">✕</button>` : ''}</div>`).join('');
+}
+function setupAddKid() { if (setupNames.length < 7) { setupNames.push(''); drawSetup(); } }
+function finishSetup() {
+  const names = setupNames.map(s => s.trim()).filter(Boolean);
+  const pin = document.getElementById('setupPin').value.trim();
+  if (!names.length) return toast('名前を1人以上いれてね');
+  if (pin.length < 3) return toast('番号は3けた以上にしてね');
+  state = {
+    kids: names.map((name, i) => ({ id: uid(), name, color: COLORS[i % COLORS.length] })),
+    menu: DEFAULT_MENU.slice(), log: [], pin,
+  };
+  save(); show('vMain');
+}
+
+// ===== 計算 =====
+function balance(id) { return state.log.filter(l => l.kid === id).reduce((s, l) => s + l.point, 0); }
+function mondayStart() {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  const w = d.getDay(); d.setDate(d.getDate() - (w === 0 ? 6 : w - 1));
+  return d.getTime();
+}
+function fmt(t) { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; }
+
+// ===== メイン画面を描く =====
+function render() {
+  const kidOf = {}; state.kids.forEach(k => kidOf[k.id] = k);
+
+  document.getElementById('cards').innerHTML = state.kids.map(k =>
+    `<div class="card" style="--c:${k.color}"><span class="name">${esc(k.name)}</span>
+     <span class="pt">${balance(k.id)}<small>pt</small></span></div>`).join('');
+
+  // ランキング（今週・もらったポイントだけ）
+  const from = mondayStart();
+  const weekly = state.kids.map(k => {
+    const ls = state.log.filter(l => l.kid === k.id && l.t >= from && l.point > 0);
+    return { k, point: ls.reduce((s, l) => s + l.point, 0), count: ls.length };
+  }).sort((a, b) => b.point - a.point);
+  const max = Math.max(1, ...weekly.map(w => w.point));
+  const team = weekly.reduce((s, w) => s + w.point, 0);
+  const medals = ['🥇', '🥈', '🥉'];
+  let rankNo = 0, prev = null;
+  document.getElementById('rank').innerHTML = `<div class="team">みんなであわせて ${team}pt ✨</div>` +
+    weekly.map((w, i) => {
+      if (w.point !== prev) { rankNo = i; prev = w.point; }
+      return `<div class="rank" style="--c:${w.k.color}"><span class="medal">${medals[rankNo] || '⭐'}</span>
+        <div class="rn">${esc(w.k.name)}<span class="rc">${w.count}かい</span>
+        <div class="bar"><i style="width:${w.point / max * 100}%"></i></div></div>
+        <span class="rp">${w.point}pt</span></div>`;
+    }).join('');
+
+  // きろく（新しい順30件）
+  const recent = state.log.slice(-30).reverse();
+  document.getElementById('log').innerHTML = recent.length ? recent.map(l => {
+    const k = kidOf[l.kid];
+    return `<div><span class="d">${fmt(l.t)}</span>
+      <span class="i"><b style="color:${k ? k.color : '#999'}">${esc(k ? k.name : '（けした子）')}</b> ${esc(l.item)}</span>
+      <span class="${l.point >= 0 ? 'plus' : 'minus'}">${l.point >= 0 ? '+' : ''}${l.point}</span></div>`;
+  }).join('') : '<div>まだきろくがないよ</div>';
+
+  // ママモード
+  if (!state.kids.find(k => k.id === selected)) selected = state.kids[0] && state.kids[0].id;
+  document.getElementById('kidsSel').innerHTML = state.kids.map(k =>
+    `<button style="--c:${k.color}" class="${k.id === selected ? 'on' : ''}" onclick="selected='${k.id}';render()">${esc(k.name)}</button>`).join('');
+  document.getElementById('menuBtns').innerHTML = state.menu.map((m, i) =>
+    `<button onclick="addLog(state.menu[${i}].item, state.menu[${i}].point)">${esc(m.item)}<span>+${m.point}</span></button>`).join('');
+}
+
+// ===== ママモード =====
+function openMama() {
+  const p = prompt('あんしょうばんごうをいれてね');
+  if (p === null) return;
+  if (p.trim() !== state.pin) return toast('ばんごうがちがうよ');
+  mamaOn = true;
+  document.getElementById('mama').classList.remove('hide');
+  document.getElementById('fab').classList.add('hide');
+}
+function closeMama() {
+  mamaOn = false;
+  document.getElementById('mama').classList.add('hide');
+  document.getElementById('fab').classList.remove('hide');
+}
+function addLog(item, point) {
+  if (!mamaOn || !selected) return;
+  state.log.push({ t: Date.now(), kid: selected, item, point });
+  save(); render();
+  const k = state.kids.find(k => k.id === selected);
+  toast(`${k.name} ${point > 0 ? '+' : ''}${point}pt！`);
+}
+function custom(sign) {
+  const memo = document.getElementById('memo').value.trim() || (sign < 0 ? 'ごほうび' : 'ボーナス');
+  const n = parseInt(document.getElementById('num').value, 10);
+  if (!n || n <= 0) return toast('ポイントをいれてね');
+  if (sign < 0 && n > balance(selected)) return toast('ポイントがたりないよ');
+  addLog(memo, n * sign);
+  document.getElementById('memo').value = ''; document.getElementById('num').value = '';
+}
+function undo() {
+  const last = state.log[state.log.length - 1];
+  if (!last) return toast('とりけすきろくがないよ');
+  if (!confirm(`「${last.item} ${last.point}pt」をとりけしますか？`)) return;
+  state.log.pop(); save(); render(); toast('とりけしました');
+}
+
+// ===== せってい =====
+function openSettings() {
+  draft = JSON.parse(JSON.stringify({ kids: state.kids, menu: state.menu }));
+  drawSettings();
+}
+function drawSettings() {
+  document.getElementById('setKids').innerHTML = draft.kids.map((k, i) =>
+    `<div class="row"><button class="dot" style="background:${k.color}" onclick="nextColor(${i})" title="いろをかえる"></button>
+     <input value="${esc(k.name)}" oninput="draft.kids[${i}].name=this.value">
+     <button class="del" onclick="delKid(${i})">✕</button></div>`).join('') +
+     '<p class="note">色の四角をタップすると色がかわります。</p>';
+  document.getElementById('setMenu').innerHTML = draft.menu.map((m, i) =>
+    `<div class="row"><input value="${esc(m.item)}" oninput="draft.menu[${i}].item=this.value">
+     <input style="width:90px;flex-shrink:0" type="number" inputmode="numeric" value="${m.point}" oninput="draft.menu[${i}].point=parseInt(this.value,10)||0">
+     <button class="del" onclick="draft.menu.splice(${i},1);drawSettings()">✕</button></div>`).join('');
+}
+function nextColor(i) {
+  const c = COLORS.indexOf(draft.kids[i].color);
+  draft.kids[i].color = COLORS[(c + 1) % COLORS.length]; drawSettings();
+}
+function addKid() { if (draft.kids.length < 7) { draft.kids.push({ id: uid(), name: '', color: COLORS[draft.kids.length % COLORS.length] }); drawSettings(); } }
+function delKid(i) {
+  if (draft.kids.length <= 1) return toast('1人はのこしてね');
+  if (confirm(`${draft.kids[i].name || 'この子'}をけしますか？（ポイントもみえなくなります）`)) { draft.kids.splice(i, 1); drawSettings(); }
+}
+function addMenu() { draft.menu.push({ item: '', point: 5 }); drawSettings(); }
+function saveSettings() {
+  const kids = draft.kids.map(k => ({ ...k, name: k.name.trim() })).filter(k => k.name);
+  if (!kids.length) return toast('名前を1人以上いれてね');
+  state.kids = kids;
+  state.menu = draft.menu.map(m => ({ item: m.item.trim(), point: m.point })).filter(m => m.item && m.point > 0);
+  save(); toast('ほぞんしました'); show('vMain');
+}
+function changePin() {
+  const p = document.getElementById('newPin').value.trim();
+  if (p.length < 3) return toast('番号は3けた以上にしてね');
+  state.pin = p; save(); document.getElementById('newPin').value = ''; toast('番号をかえました');
+}
+async function exportData() {
+  const text = JSON.stringify(state);
+  try { await navigator.clipboard.writeText(text); toast('コピーしました'); }
+  catch (e) { const t = document.getElementById('importText'); t.value = text; t.select(); toast('下の文字を長押ししてコピーしてね'); }
+}
+function importData() {
+  try {
+    const d = JSON.parse(document.getElementById('importText').value);
+    if (!Array.isArray(d.kids) || !Array.isArray(d.log) || !Array.isArray(d.menu)) throw 0;
+    if (!confirm('いまのデータを、貼りつけたデータに入れかえますか？')) return;
+    state = d; save(); document.getElementById('importText').value = '';
+    toast('よみこみました'); closeMama(); show('vMain');
+  } catch (e) { toast('データの形がちがうみたい'); }
+}
+function resetAll() {
+  if (!confirm('すべてのデータ（名前・ポイント・きろく）をけします。もとにもどせません。よろしいですか？')) return;
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  location.reload();
+}
+
+// ===== 小さな道具 =====
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.style.display = 'none', 1800);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ===== 起動 =====
+if (state && state.kids && state.kids.length) { show('vMain'); }
+else { drawSetup(); show('vSetup'); }
+
+// オフラインでも開けるようにする
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
